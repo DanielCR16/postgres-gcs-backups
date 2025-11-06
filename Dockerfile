@@ -1,32 +1,30 @@
-# Etapa de build (Node)
+# ---------- Build (Node) ----------
 FROM node:18-alpine AS build
 WORKDIR /root
 
-# copia package.json y (si existe) package-lock.json
+# Copia manifiestos primero para aprovechar cache de capa
 COPY package*.json ./
 COPY tsconfig.json ./
 COPY src ./src
 
-# usa cache de npm y fallback si no hay lockfile
-RUN --mount=type=cache,target=/root/.npm \
-    if [ -f package-lock.json ]; then \
-      npm ci; \
-    else \
-      npm install; \
-    fi
+# Si tienes package-lock.json, usa npm ci; si no, cae a npm install
+RUN if [ -f package-lock.json ]; then npm ci; else npm install; fi
 
 RUN npm run build
 RUN npm prune --production
 
-# Etapa de runtime con pg_dump 14 (para backups)
+# ---------- Runtime (pg_dump 14 + Node) ----------
 FROM postgres:14-alpine
 WORKDIR /root
 
-# Node para ejecutar tu app
+# Instala Node para ejecutar tu app
 RUN apk add --no-cache nodejs npm
 
-# Artefactos de build
+# Copia artefactos del build
 COPY --from=build /root/node_modules ./node_modules
 COPY --from=build /root/dist ./dist
+
+# (Opcional, útil para debug rápido)
+# RUN pg_dump --version
 
 ENTRYPOINT ["node", "dist/index.js"]
